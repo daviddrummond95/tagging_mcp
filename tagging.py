@@ -1,20 +1,33 @@
 #!/usr/bin/env python3
 from fastmcp import FastMCP
 import polars as pl
-from polar_llama import add_claude, add_openai, add_gemini, add_groq
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from polar_llama import tag_taxonomy, Provider
+from typing import List, Optional, Dict, Any
 import os
 
 # Create an MCP server
 mcp = FastMCP("Tagging MCP")
 
 
-class TaggingResult(BaseModel):
-    """Result of tagging operation"""
-    tags: List[str] = Field(description="The assigned tags from the taxonomy")
-    confidence: Optional[str] = Field(default=None, description="Confidence level of the tagging")
-    reasoning: Optional[str] = Field(default=None, description="Brief explanation for the tags")
+# Provider mapping
+PROVIDER_MAP = {
+    "claude": Provider.ANTHROPIC,
+    "anthropic": Provider.ANTHROPIC,
+    "openai": Provider.OPENAI,
+    "gemini": Provider.GEMINI,
+    "groq": Provider.GROQ,
+    "bedrock": Provider.BEDROCK
+}
+
+
+def _create_taxonomy_from_tags(tags: List[str], field_name: str = "category") -> Dict[str, Any]:
+    """Convert a simple list of tags into a taxonomy structure."""
+    return {
+        field_name: {
+            "description": f"The most appropriate {field_name} for this text",
+            "values": {tag: f"Content that belongs in the '{tag}' {field_name}" for tag in tags}
+        }
+    }
 
 
 @mcp.tool()
@@ -22,24 +35,26 @@ def tag_csv(
     csv_path: str,
     taxonomy: List[str],
     text_column: str = "text",
-    provider: str = "claude",
-    model: str = "claude-3-5-sonnet-20241022",
+    provider: str = "groq",
+    model: str = "llama-3.3-70b-versatile",
     api_key: Optional[str] = None,
     output_path: Optional[str] = None,
-    include_reasoning: bool = False
+    include_reasoning: bool = False,
+    field_name: str = "category"
 ) -> dict:
     """
     Tag all rows in a CSV file based on a provided taxonomy using parallel LLM inference.
 
     Args:
         csv_path: Path to the CSV file to tag
-        taxonomy: List of possible tags/categories to assign
+        taxonomy: List of possible tags/categories to assign (e.g., ["technology", "business", "science"])
         text_column: Name of the column containing text to analyze (default: "text")
-        provider: LLM provider - "claude", "openai", "gemini", or "groq" (default: "claude")
-        model: Model identifier (default: "claude-3-5-sonnet-20241022")
+        provider: LLM provider - "claude", "openai", "gemini", "groq", or "bedrock" (default: "groq")
+        model: Model identifier (default: "llama-3.3-70b-versatile")
         api_key: API key for the provider (if not set via environment variable)
         output_path: Optional path to save the tagged CSV (if not provided, returns preview)
-        include_reasoning: Whether to include reasoning in the output (default: False)
+        include_reasoning: Whether to include detailed reasoning and reflection in output (default: False)
+        field_name: Name for the classification field (default: "category")
 
     Returns:
         Dictionary with status, preview of tagged data, and optionally the output path
@@ -55,104 +70,63 @@ def tag_csv(
                 "message": f"Column '{text_column}' not found in CSV. Available columns: {df.columns}"
             }
 
-        # Create the tagging prompt
-        taxonomy_str = "\n".join([f"- {tag}" for tag in taxonomy])
-
-        if include_reasoning:
-            system_prompt = f"""You are a text classification expert. Your task is to analyze text and assign relevant tags from a predefined taxonomy.
-
-Available tags:
-{taxonomy_str}
-
-Rules:
-- You can assign one or multiple tags from the taxonomy
-- Only use tags from the provided list
-- Be precise and choose the most relevant tags
-- Provide your confidence level (high/medium/low)
-- Briefly explain your reasoning"""
-
-            user_prompt_template = "Analyze and tag the following text:\n\n{text}"
-        else:
-            system_prompt = f"""You are a text classification expert. Your task is to analyze text and assign relevant tags from a predefined taxonomy.
-
-Available tags:
-{taxonomy_str}
-
-Rules:
-- You can assign one or multiple tags from the taxonomy
-- Only use tags from the provided list
-- Be precise and choose the most relevant tags"""
-
-            user_prompt_template = "Analyze and tag the following text:\n\n{text}"
-
-        # Create user prompts for each row
-        df = df.with_columns(
-            pl.col(text_column).map_elements(
-                lambda x: user_prompt_template.format(text=x),
-                return_dtype=pl.Utf8
-            ).alias("prompt")
-        )
-
         # Set up API key if provided
         if api_key:
-            os.environ[f"{provider.upper()}_API_KEY"] = api_key
+            if provider.lower() in ["claude", "anthropic"]:
+                os.environ["ANTHROPIC_API_KEY"] = api_key
+            else:
+                os.environ[f"{provider.upper()}_API_KEY"] = api_key
 
-        # Add LLM inference based on provider
-        if provider.lower() == "claude":
-            df = add_claude(
-                df=df,
-                user_prompt_col="prompt",
-                system_prompt=system_prompt,
-                model=model,
-                response_model=TaggingResult,
-                response_col="tagging_result"
-            )
-        elif provider.lower() == "openai":
-            df = add_openai(
-                df=df,
-                user_prompt_col="prompt",
-                system_prompt=system_prompt,
-                model=model,
-                response_model=TaggingResult,
-                response_col="tagging_result"
-            )
-        elif provider.lower() == "gemini":
-            df = add_gemini(
-                df=df,
-                user_prompt_col="prompt",
-                system_prompt=system_prompt,
-                model=model,
-                response_model=TaggingResult,
-                response_col="tagging_result"
-            )
-        elif provider.lower() == "groq":
-            df = add_groq(
-                df=df,
-                user_prompt_col="prompt",
-                system_prompt=system_prompt,
-                model=model,
-                response_model=TaggingResult,
-                response_col="tagging_result"
-            )
-        else:
+        # Convert tag list to taxonomy format
+        taxonomy_dict = _create_taxonomy_from_tags(taxonomy, field_name)
+
+        # Get the provider enum
+        provider_enum = PROVIDER_MAP.get(provider.lower())
+        if not provider_enum:
             return {
                 "status": "error",
-                "message": f"Unsupported provider: {provider}. Use 'claude', 'openai', 'gemini', or 'groq'"
+                "message": f"Unsupported provider: {provider}. Use 'claude', 'openai', 'gemini', 'groq', or 'bedrock'"
             }
 
-        # Extract tags from the structured response
+        # Apply taxonomy tagging using polar_llama
+        df = df.with_columns(
+            tags=tag_taxonomy(
+                pl.col(text_column),
+                taxonomy_dict,
+                provider=provider_enum,
+                model=model
+            )
+        )
+
+        # Extract the selected tag value and confidence
         df = df.with_columns([
-            pl.col("tagging_result").struct.field("tags").alias("tags"),
+            pl.col("tags").struct.field(field_name).struct.field("value").alias(field_name),
+            pl.col("tags").struct.field(field_name).struct.field("confidence").alias("confidence")
         ])
 
+        # Optionally include reasoning and reflection
         if include_reasoning:
             df = df.with_columns([
-                pl.col("tagging_result").struct.field("confidence").alias("confidence"),
-                pl.col("tagging_result").struct.field("reasoning").alias("reasoning")
+                pl.col("tags").struct.field(field_name).struct.field("thinking").alias("thinking"),
+                pl.col("tags").struct.field(field_name).struct.field("reflection").alias("reflection")
             ])
 
-        # Drop the prompt and raw result columns for cleaner output
-        df = df.drop(["prompt", "tagging_result"])
+        # Check for errors
+        error_rows = df.filter(
+            pl.col("tags").struct.field("_error").is_not_null()
+        )
+
+        if len(error_rows) > 0:
+            error_details = error_rows.select([
+                text_column,
+                pl.col("tags").struct.field("_error").alias("error"),
+                pl.col("tags").struct.field("_details").alias("error_details")
+            ]).to_dicts()
+        else:
+            error_details = None
+
+        # Drop the raw tags column for cleaner output
+        df = df.drop("tags")
 
         # Save to file if output path is provided
         if output_path:
@@ -161,14 +135,20 @@ Rules:
                 "status": "success",
                 "message": f"Successfully tagged {len(df)} rows",
                 "output_path": output_path,
-                "preview": df.head(5).to_dicts()
+                "preview": df.head(5).to_dicts(),
+                "total_rows": len(df)
             }
+            if error_details:
+                result["errors"] = error_details
         else:
             result = {
                 "status": "success",
                 "message": f"Successfully tagged {len(df)} rows",
-                "data": df.to_dicts()
+                "data": df.to_dicts(),
+                "total_rows": len(df)
             }
+            if error_details:
+                result["errors"] = error_details
 
         return result
 
@@ -207,13 +187,179 @@ def preview_csv(csv_path: str, rows: int = 5) -> dict:
 
 
 @mcp.tool()
+def tag_csv_advanced(
+    csv_path: str,
+    taxonomy: Dict[str, Dict[str, Any]],
+    text_column: str = "text",
+    provider: str = "groq",
+    model: str = "llama-3.3-70b-versatile",
+    api_key: Optional[str] = None,
+    output_path: Optional[str] = None,
+    include_reasoning: bool = False
+) -> dict:
+    """
+    Tag CSV rows using a custom taxonomy with multiple fields and detailed value definitions.
+
+    This is the advanced version that accepts a full taxonomy dictionary for multi-dimensional classification.
+
+    Args:
+        csv_path: Path to the CSV file to tag
+        taxonomy: Full taxonomy dictionary with structure:
+            {
+                "field_name": {
+                    "description": "What this field represents",
+                    "values": {
+                        "value1": "Definition of value1",
+                        "value2": "Definition of value2"
+                    }
+                }
+            }
+        text_column: Name of the column containing text to analyze (default: "text")
+        provider: LLM provider - "claude", "openai", "gemini", "groq", or "bedrock" (default: "groq")
+        model: Model identifier (default: "llama-3.3-70b-versatile")
+        api_key: API key for the provider (if not set via environment variable)
+        output_path: Optional path to save the tagged CSV
+        include_reasoning: Whether to include detailed reasoning and reflection (default: False)
+
+    Returns:
+        Dictionary with status, preview of tagged data, and optionally the output path
+
+    Example taxonomy:
+        {
+            "sentiment": {
+                "description": "The emotional tone of the text",
+                "values": {
+                    "positive": "Text expresses positive emotions or favorable opinions",
+                    "negative": "Text expresses negative emotions or unfavorable opinions",
+                    "neutral": "Text is factual and objective"
+                }
+            },
+            "urgency": {
+                "description": "How urgent the content is",
+                "values": {
+                    "high": "Requires immediate attention",
+                    "medium": "Should be addressed soon",
+                    "low": "Can be addressed at any time"
+                }
+            }
+        }
+    """
+    try:
+        # Read the CSV file
+        df = pl.read_csv(csv_path)
+
+        # Validate that the text column exists
+        if text_column not in df.columns:
+            return {
+                "status": "error",
+                "message": f"Column '{text_column}' not found in CSV. Available columns: {df.columns}"
+            }
+
+        # Set up API key if provided
+        if api_key:
+            if provider.lower() in ["claude", "anthropic"]:
+                os.environ["ANTHROPIC_API_KEY"] = api_key
+            else:
+                os.environ[f"{provider.upper()}_API_KEY"] = api_key
+
+        # Get the provider enum
+        provider_enum = PROVIDER_MAP.get(provider.lower())
+        if not provider_enum:
+            return {
+                "status": "error",
+                "message": f"Unsupported provider: {provider}. Use 'claude', 'openai', 'gemini', 'groq', or 'bedrock'"
+            }
+
+        # Apply taxonomy tagging
+        df = df.with_columns(
+            tags=tag_taxonomy(
+                pl.col(text_column),
+                taxonomy,
+                provider=provider_enum,
+                model=model
+            )
+        )
+
+        # Extract values and confidence for each field
+        field_columns = []
+        for field_name in taxonomy.keys():
+            field_columns.extend([
+                pl.col("tags").struct.field(field_name).struct.field("value").alias(field_name),
+                pl.col("tags").struct.field(field_name).struct.field("confidence").alias(f"{field_name}_confidence")
+            ])
+
+            if include_reasoning:
+                field_columns.extend([
+                    pl.col("tags").struct.field(field_name).struct.field("thinking").alias(f"{field_name}_thinking"),
+                    pl.col("tags").struct.field(field_name).struct.field("reflection").alias(f"{field_name}_reflection")
+                ])
+
+        df = df.with_columns(field_columns)
+
+        # Check for errors
+        error_rows = df.filter(
+            pl.col("tags").struct.field("_error").is_not_null()
+        )
+
+        if len(error_rows) > 0:
+            error_details = error_rows.select([
+                text_column,
+                pl.col("tags").struct.field("_error").alias("error"),
+                pl.col("tags").struct.field("_details").alias("error_details")
+            ]).to_dicts()
+        else:
+            error_details = None
+
+        # Drop the raw tags column
+        df = df.drop("tags")
+
+        # Save or return results
+        if output_path:
+            df.write_csv(output_path)
+            result = {
+                "status": "success",
+                "message": f"Successfully tagged {len(df)} rows with {len(taxonomy)} fields",
+                "output_path": output_path,
+                "preview": df.head(5).to_dicts(),
+                "total_rows": len(df),
+                "fields": list(taxonomy.keys())
+            }
+            if error_details:
+                result["errors"] = error_details
+        else:
+            result = {
+                "status": "success",
+                "message": f"Successfully tagged {len(df)} rows with {len(taxonomy)} fields",
+                "data": df.to_dicts(),
+                "total_rows": len(df),
+                "fields": list(taxonomy.keys())
+            }
+            if error_details:
+                result["errors"] = error_details
+
+        return result
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@mcp.tool()
 def get_tagging_info() -> dict:
     """Get information about the tagging MCP server and supported providers"""
     return {
         "name": "Tagging MCP",
         "description": "MCP server for tagging CSV rows using polar_llama with parallel LLM inference",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "supported_providers": [
+            {
+                "name": "groq",
+                "models": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"],
+                "env_var": "GROQ_API_KEY",
+                "recommended": True
+            },
             {
                 "name": "claude",
                 "models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229"],
@@ -230,18 +376,25 @@ def get_tagging_info() -> dict:
                 "env_var": "GEMINI_API_KEY"
             },
             {
-                "name": "groq",
-                "models": ["llama-3.1-70b-versatile", "mixtral-8x7b-32768"],
-                "env_var": "GROQ_API_KEY"
+                "name": "bedrock",
+                "models": ["anthropic.claude-3-sonnet", "anthropic.claude-3-haiku"],
+                "env_var": "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
             }
         ],
         "features": [
             "Parallel LLM inference for fast batch processing",
-            "Multiple LLM provider support",
-            "Structured output with Pydantic models",
-            "Configurable taxonomy-based tagging",
-            "Optional confidence and reasoning output"
-        ]
+            "Multiple LLM provider support (Groq, Claude, OpenAI, Gemini, Bedrock)",
+            "Taxonomy-based classification with reasoning and confidence scores",
+            "Simple tag list or advanced multi-field taxonomy support",
+            "Automatic error detection and reporting",
+            "Optional detailed reasoning and reflection output"
+        ],
+        "tools": {
+            "tag_csv": "Simple tagging with a list of categories",
+            "tag_csv_advanced": "Advanced multi-dimensional classification with custom taxonomy",
+            "preview_csv": "Preview CSV structure before tagging",
+            "get_tagging_info": "Get server information"
+        }
     }
 
 
