@@ -9,10 +9,12 @@ This MCP server enables fast, parallel tagging of CSV data using multiple LLM pr
 ## Features
 
 - **Parallel Processing**: Tag hundreds or thousands of CSV rows concurrently
-- **Multiple LLM Providers**: Support for Claude (Anthropic), OpenAI, Gemini, and Groq
-- **Structured Output**: Uses Pydantic models for consistent, type-safe results
-- **Flexible Taxonomy**: Define custom tag lists for your use case
-- **Optional Reasoning**: Include confidence levels and explanations for tags
+- **Multiple LLM Providers**: Support for 30+ models across Groq, Claude, OpenAI, Gemini, and AWS Bedrock
+- **Structured Output**: Uses taxonomy-based classification with guaranteed schema compliance
+- **Flexible Taxonomy**: Define custom tag lists or complex multi-field taxonomies
+- **Optional Reasoning**: Include confidence levels, detailed thinking, and reflection for each tag
+- **Latest Models**: Support for Claude 4.5, GPT-4o, Gemini 2.5, and specialized Llama tool-use models
+- **Error Detection**: Automatic error tracking and reporting for failed classifications
 
 ## Installation
 
@@ -213,11 +215,51 @@ Use tag_csv_advanced with:
 
 ## Supported LLM Providers
 
-- **Groq** (Recommended): llama-3.3-70b-versatile, llama-3.1-70b-versatile, mixtral-8x7b-32768
-- **Claude (Anthropic)**: claude-3-5-sonnet-20241022, claude-3-opus-20240229
-- **OpenAI**: gpt-4, gpt-4-turbo, gpt-3.5-turbo
-- **Gemini**: gemini-1.5-pro, gemini-1.5-flash
-- **AWS Bedrock**: anthropic.claude-3-sonnet, anthropic.claude-3-haiku
+All models listed below support tool calling/function calling and structured outputs required for taxonomy-based tagging.
+
+### Groq (Recommended)
+Fast inference with specialized tool-use models:
+- `llama-3.3-70b-versatile` - Best balance of speed and quality
+- `llama-3.1-8b-instant` - Fast with native function calling and JSON mode
+- `llama-3-groq-70b-tool-use` - Specialized for tool use (preview)
+- `llama-3-groq-8b-tool-use` - Fast specialized tool use (preview)
+- `mixtral-8x7b-32768` - Large context window
+
+### Claude (Anthropic)
+Latest models with fine-grained tool streaming:
+- `claude-sonnet-4-5` - Latest Sonnet with enhanced streaming
+- `claude-haiku-4-5` - Latest Haiku, fast and cost-effective
+- `claude-opus-4` - Most capable Claude model
+- `claude-3-5-sonnet-20241022` - Strong performance
+- `claude-3-opus-20240229` - Previous generation flagship
+- `claude-3-sonnet-20240229` - Previous generation balanced
+- `claude-3-haiku-20240307` - Previous generation fast
+
+### OpenAI
+Models with structured outputs support:
+- `gpt-4o` - Latest multimodal model
+- `gpt-4o-mini` - Fast and cost-effective
+- `gpt-4o-2024-08-06` - 100% structured output reliability
+- `gpt-4-turbo` - Previous flagship
+- `gpt-4` - Original GPT-4
+- `gpt-3.5-turbo` - Fast and economical
+
+### Google Gemini
+Gemini 2.x models with simplified function calling:
+- `gemini-2.5-pro` - Latest Pro with enhanced capabilities
+- `gemini-2.5-flash` - Latest Flash, fast and efficient
+- `gemini-2.0-flash` - Previous generation Flash
+- `gemini-1.5-pro` - Multimodal with long context
+- `gemini-1.5-flash` - Fast 1.5 generation
+
+### AWS Bedrock
+Claude models via Bedrock (use Converse API):
+- `us.anthropic.claude-sonnet-4-5-v1:0` - Latest Sonnet
+- `us.anthropic.claude-haiku-4-5-v1:0` - Latest Haiku
+- `anthropic.claude-3-5-sonnet-20241022-v2:0` - Claude 3.5 Sonnet
+- `anthropic.claude-3-opus-20240229-v1:0` - Claude 3 Opus
+- `anthropic.claude-3-sonnet-20240229-v1:0` - Claude 3 Sonnet
+- `anthropic.claude-3-haiku-20240307-v1:0` - Claude 3 Haiku
 
 ## Key Features
 

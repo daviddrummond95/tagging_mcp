@@ -356,29 +356,68 @@ def get_tagging_info() -> dict:
         "supported_providers": [
             {
                 "name": "groq",
-                "models": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"],
+                "models": [
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant",
+                    "llama-3-groq-70b-tool-use",
+                    "llama-3-groq-8b-tool-use",
+                    "mixtral-8x7b-32768"
+                ],
                 "env_var": "GROQ_API_KEY",
-                "recommended": True
+                "recommended": True,
+                "notes": "Fast inference with specialized tool-use models"
             },
             {
                 "name": "claude",
-                "models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229"],
-                "env_var": "ANTHROPIC_API_KEY"
+                "models": [
+                    "claude-sonnet-4-5",
+                    "claude-haiku-4-5",
+                    "claude-opus-4",
+                    "claude-3-5-sonnet-20241022",
+                    "claude-3-opus-20240229",
+                    "claude-3-sonnet-20240229",
+                    "claude-3-haiku-20240307"
+                ],
+                "env_var": "ANTHROPIC_API_KEY",
+                "notes": "Latest models support fine-grained tool streaming"
             },
             {
                 "name": "openai",
-                "models": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
-                "env_var": "OPENAI_API_KEY"
+                "models": [
+                    "gpt-4o",
+                    "gpt-4o-mini",
+                    "gpt-4o-2024-08-06",
+                    "gpt-4-turbo",
+                    "gpt-4",
+                    "gpt-3.5-turbo"
+                ],
+                "env_var": "OPENAI_API_KEY",
+                "notes": "gpt-4o-2024-08-06 achieves 100% structured output reliability"
             },
             {
                 "name": "gemini",
-                "models": ["gemini-1.5-pro", "gemini-1.5-flash"],
-                "env_var": "GEMINI_API_KEY"
+                "models": [
+                    "gemini-2.5-pro",
+                    "gemini-2.5-flash",
+                    "gemini-2.0-flash",
+                    "gemini-1.5-pro",
+                    "gemini-1.5-flash"
+                ],
+                "env_var": "GEMINI_API_KEY",
+                "notes": "Gemini 2.x models have simplified function calling"
             },
             {
                 "name": "bedrock",
-                "models": ["anthropic.claude-3-sonnet", "anthropic.claude-3-haiku"],
-                "env_var": "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+                "models": [
+                    "us.anthropic.claude-sonnet-4-5-v1:0",
+                    "us.anthropic.claude-haiku-4-5-v1:0",
+                    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "anthropic.claude-3-opus-20240229-v1:0",
+                    "anthropic.claude-3-sonnet-20240229-v1:0",
+                    "anthropic.claude-3-haiku-20240307-v1:0"
+                ],
+                "env_var": "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY",
+                "notes": "Use Converse API for tool calling"
             }
         ],
         "features": [
